@@ -1,3 +1,15 @@
 # Cloudflare Access (required in production). TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 POLICY_AUD=your-access-policy-audience-tag
 TEAM_DOMAIN=https://your-team.cloudflareaccess.com
+
+# Web Push (VAPID). Set the matching Worker vars in production. Do not put real keys in git.
+# Private key is a Worker secret: wrangler secret put VAPID_PRIVATE_KEY
+VAPID_PRIVATE_KEY=your-vapid-private-key-base64url
+VAPID_PUBLIC_KEY=your-vapid-public-key-base64url
+VAPID_SUBJECT=mailto:you@example.com
+
+# Comma-separated SHA-256 fingerprints of the TWA signing cert (debug and/or release).
+# keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android
+TWA_SHA256_FINGERPRINTS=
+TWA_PACKAGE_ID=com.example.inbox
+PUBLIC_ORIGIN=https://inbox.example.com

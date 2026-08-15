@@ -8,50 +8,58 @@
  */
 import type { Env } from "../types";
 
+export function isBrowserInlinePreviewable(mimetype: string, filename: string): boolean {
+  const type = mimetype.toLowerCase();
+  if (type.startsWith("image/") && type !== "image/svg+xml") return true;
+  if (type === "application/pdf" || filename.toLowerCase().endsWith(".pdf")) return true;
+  if (type.startsWith("audio/") || type.startsWith("video/")) return true;
+  return false;
+}
+
 export interface StoredAttachment {
-	id: string;
-	email_id: string;
-	filename: string;
-	mimetype: string;
-	size: number;
-	content_id: string | null;
-	disposition: string;
+  id: string;
+  email_id: string;
+  filename: string;
+  mimetype: string;
+  size: number;
+  content_id: string | null;
+  disposition: string;
 }
 
 /**
  * Store base64-encoded attachments to R2 and return metadata for the DO.
  */
 export async function storeAttachments(
-	bucket: Env["BUCKET"],
-	emailId: string,
-	attachments?: {
-		content: string;
-		filename: string;
-		type: string;
-		disposition: string;
-		contentId?: string;
-	}[],
+  bucket: Env["BUCKET"],
+  emailId: string,
+  attachments?: {
+    content: string;
+    filename: string;
+    type: string;
+    disposition: string;
+    contentId?: string;
+  }[],
 ): Promise<StoredAttachment[]> {
-	if (!attachments?.length) return [];
+  if (!attachments?.length) return [];
 
-	const results: StoredAttachment[] = [];
-	for (const att of attachments) {
-		const attachmentId = crypto.randomUUID();
-		// Sanitize filename to prevent path traversal in R2 keys
-		const safeFilename = (att.filename || "untitled").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "_");
-		const key = `attachments/${emailId}/${attachmentId}/${safeFilename}`;
-		const binaryStr = atob(att.content);
-		const bytes = Uint8Array.from(binaryStr, (c) => c.charCodeAt(0));
-		await bucket.put(key, bytes);
-		results.push({
-			id: attachmentId,
-			email_id: emailId,
-			filename: safeFilename,
-			mimetype: att.type,
-			size: bytes.byteLength,
-			content_id: att.contentId || null,
-			disposition: att.disposition,
-		});
-	}
-	return results;
+  const results: StoredAttachment[] = [];
+  for (const att of attachments) {
+    const attachmentId = crypto.randomUUID();
+    // Sanitize filename to prevent path traversal in R2 keys
+    const safeFilename = (att.filename || "untitled").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "_");
+    const key = `attachments/${emailId}/${attachmentId}/${safeFilename}`;
+    const binaryStr = atob(att.content);
+    const bytes = Uint8Array.from(binaryStr, (c) => c.charCodeAt(0));
+    await bucket.put(key, bytes);
+    results.push({
+      id: attachmentId,
+      email_id: emailId,
+      filename: safeFilename,
+      mimetype: att.type,
+      size: bytes.byteLength,
+      content_id: att.contentId || null,
+      disposition: att.disposition,
+    });
+  }
+  return results;
 }

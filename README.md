@@ -37,18 +37,20 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 ## Features
 
-- **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, labels, search, and attachments
+- **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, labels, search, and attachments. Compose can attach files. Image, PDF, text, audio, and video attachments open in a small in-app preview.
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
 - **Built-in AI agent** — Side panel with email tools for reading, searching, drafting, sending, folders, and labels
 - **MCP server** — `/mcp` exposes mailbox, folder, and label tools. Prefers the 2026-07-28 stateless handshake; sessionful clients still work
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
+- **Web Push** — Incoming mail sends a Chrome/TWA notification. Subscribe happens after login; the Worker sends VAPID Web Push from the email handler
+- **Android TWA** — `npm run android:apk` wraps your deployed origin in a Trusted Web Activity. Auth is Cloudflare Access in Chrome, not a WebView cookie jar
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 
 ## Stack
 
-- **Frontend:** React 19, React Router v7, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
+- **Frontend:** React 19, React Router v8, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
 - **Backend:** Hono, Cloudflare Workers, Durable Objects (SQLite), R2, Email Routing
-- **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/moonshotai/kimi-k2.5`), `react-markdown` + `remark-gfm`
+- **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v7, Workers AI (`@cf/zai-org/glm-4.7-flash`), `react-markdown` + `remark-gfm`
 - **Auth:** Cloudflare Access JWT validation (required outside local development)
 
 ## Getting Started
@@ -68,6 +70,37 @@ npm run dev
 ```bash
 npm run deploy
 ```
+
+Set the VAPID private key as a Worker secret:
+
+```bash
+npx wrangler secret put VAPID_PRIVATE_KEY
+```
+
+Set `PUBLIC_ORIGIN`, `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT`, `TWA_PACKAGE_ID`, and `TWA_SHA256_FINGERPRINTS` as Worker vars (dashboard or `wrangler versions secret` / vars). Local values go in `.dev.vars` (gitignored). `npm run deploy` uses `--keep-vars` so those production vars are not wiped.
+
+This repo is public. Keep Access `POLICY_AUD` / `TEAM_DOMAIN`, VAPID keys, hostnames, package ids, and keystores out of git.
+
+### Android APK
+
+The APK is a Trusted Web Activity pointed at your deployed origin. It is not a Capacitor WebView.
+
+```bash
+cp android/twa-manifest.example.json android/twa-manifest.json
+# set host, packageId, and icon URLs to your origin
+npm run android:icons   # once, after changing public/favicon.svg
+npm run android:apk     # writes android/ (gitignored) and builds app-debug.apk
+```
+
+Sideload `android/app/build/outputs/apk/debug/app-debug.apk`. First launch opens Cloudflare Access in Chrome.
+
+Chrome hides the URL bar only when Digital Asset Links verify. That needs:
+
+1. A public `/.well-known/assetlinks.json` (the Worker serves it and skips Access JWT on that path)
+2. A Cloudflare Access bypass policy for `/.well-known/assetlinks.json` on your origin (and ideally `/icon-192.png`, `/icon-512.png`, `/manifest.webmanifest`)
+3. `TWA_SHA256_FINGERPRINTS` matching the APK signing cert (colon-separated hex) as a Worker var
+
+Web Push also works in desktop Chrome after you allow notifications on a mailbox.
 
 ## Prerequisites
 

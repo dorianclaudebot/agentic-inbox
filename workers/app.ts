@@ -5,38 +5,33 @@
 import { routeAgentRequest } from "agents";
 import { Hono } from "hono";
 import { jwtVerify, createRemoteJWKSet } from "jose";
-import { createRequestHandler } from "react-router";
+import { createRequestHandler, RouterContextProvider } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
+import {
+  assetLinksDocument,
+  isPublicUnauthenticatedPath,
+  webAppManifest,
+} from "./lib/public-paths";
+import swSource from "../public/sw.js?raw";
 
 export { MailboxDO } from "./durableObject";
 export { EmailAgent } from "./agent";
 export { EmailMCP } from "./mcp";
 
-declare module "react-router" {
-	export interface AppLoadContext {
-		cloudflare: {
-			env: Env;
-			ctx: ExecutionContext;
-		};
-	}
-}
-
 const requestHandler = createRequestHandler(
-	() => import("virtual:react-router/server-build"),
-	import.meta.env.MODE,
+  () => import("virtual:react-router/server-build"),
+  import.meta.env.MODE,
 );
 
 function getAccessUrls(teamDomain: string) {
-	const certsPath = "/cdn-cgi/access/certs";
-	const teamUrl = new URL(teamDomain);
-	const issuer = teamUrl.origin;
-	const certsUrl = teamUrl.pathname.endsWith(certsPath)
-		? teamUrl
-		: new URL(certsPath, issuer);
+  const certsPath = "/cdn-cgi/access/certs";
+  const teamUrl = new URL(teamDomain);
+  const issuer = teamUrl.origin;
+  const certsUrl = teamUrl.pathname.endsWith(certsPath) ? teamUrl : new URL(certsPath, issuer);
 
-	return { issuer, certsUrl };
+  return { issuer, certsUrl };
 }
 
 // Main app that wraps the API and adds React Router fallback
@@ -44,50 +39,77 @@ const app = new Hono<{ Bindings: Env }>();
 
 // Cloudflare Access JWT validation middleware (production only)
 app.use("*", async (c, next) => {
-	// Skip validation in development
-	if (import.meta.env.DEV) {
-		return next();
-	}
+  if (isPublicUnauthenticatedPath(new URL(c.req.url).pathname)) {
+    return next();
+  }
 
-	const { POLICY_AUD, TEAM_DOMAIN } = c.env;
+  // Skip validation in development
+  if (import.meta.env.DEV) {
+    return next();
+  }
 
-	// Fail closed in production if Access is not configured.
-	if (!POLICY_AUD || !TEAM_DOMAIN) {
-		return c.text(
-			"Cloudflare Access must be configured in production. Set POLICY_AUD and TEAM_DOMAIN.",
-			500,
-		);
-	}
+  const { POLICY_AUD, TEAM_DOMAIN } = c.env;
 
-	const token = c.req.header("cf-access-jwt-assertion");
-	if (!token) {
-		return c.text("Missing required CF Access JWT", 403);
-	}
+  // Fail closed in production if Access is not configured.
+  if (!POLICY_AUD || !TEAM_DOMAIN) {
+    return c.text(
+      "Cloudflare Access must be configured in production. Set POLICY_AUD and TEAM_DOMAIN.",
+      500,
+    );
+  }
 
-	try {
-		const { issuer, certsUrl } = getAccessUrls(TEAM_DOMAIN);
-		const JWKS = createRemoteJWKSet(certsUrl);
-		await jwtVerify(token, JWKS, {
-			issuer,
-			audience: POLICY_AUD,
-		});
-	} catch {
-		return c.text("Invalid or expired Access token", 403);
-	}
+  const token = c.req.header("cf-access-jwt-assertion");
+  if (!token) {
+    return c.text("Missing required CF Access JWT", 403);
+  }
 
-	// Authorization model note: once a teammate passes the shared Cloudflare
-	// Access policy, they can access all mailboxes in this app by design.
-	return next();
+  try {
+    const { issuer, certsUrl } = getAccessUrls(TEAM_DOMAIN);
+    const JWKS = createRemoteJWKSet(certsUrl);
+    await jwtVerify(token, JWKS, {
+      issuer,
+      audience: POLICY_AUD,
+    });
+  } catch {
+    return c.text("Invalid or expired Access token", 403);
+  }
+
+  // Authorization model note: once a teammate passes the shared Cloudflare
+  // Access policy, they can access all mailboxes in this app by design.
+  return next();
+});
+
+app.get("/.well-known/assetlinks.json", (c) => {
+  return c.json(assetLinksDocument(c.env), 200, {
+    "Cache-Control": "public, max-age=300",
+  });
+});
+
+app.get("/manifest.webmanifest", (c) => {
+  return c.json(webAppManifest(), 200, {
+    "Content-Type": "application/manifest+json",
+    "Cache-Control": "public, max-age=300",
+  });
+});
+
+app.get("/sw.js", (c) => {
+  return new Response(swSource, {
+    headers: {
+      "Content-Type": "application/javascript; charset=utf-8",
+      "Service-Worker-Allowed": "/",
+      "Cache-Control": "no-cache",
+    },
+  });
 });
 
 // MCP server endpoint — used by AI coding tools (ProtoAgent, Claude Code, Cursor, etc.)
 // Must be before API routes and React Router catch-all
 const mcpHandler = EmailMCP.serve("/mcp", { binding: "EMAIL_MCP" });
 app.all("/mcp", async (c) => {
-	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
+  return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 });
 app.all("/mcp/*", async (c) => {
-	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
+  return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 });
 
 // Mount the API routes
@@ -95,33 +117,27 @@ app.route("/", apiApp);
 
 // Agent WebSocket routing - must be before React Router catch-all
 app.all("/agents/*", async (c) => {
-	const response = await routeAgentRequest(c.req.raw, c.env);
-	if (response) return response;
-	return c.text("Agent not found", 404);
+  const response = await routeAgentRequest(c.req.raw, c.env);
+  if (response) return response;
+  return c.text("Agent not found", 404);
 });
 
 // React Router catch-all: serves the SPA for all non-API routes
 app.all("*", (c) => {
-	return requestHandler(c.req.raw, {
-		cloudflare: { env: c.env, ctx: c.executionCtx as ExecutionContext },
-	});
+  return requestHandler(c.req.raw, new RouterContextProvider());
 });
 
 // Export the Hono app as the default export with an email handler
 export default {
-	fetch: app.fetch,
-	async email(
-		event: { raw: ReadableStream; rawSize: number },
-		env: Env,
-		ctx: ExecutionContext,
-	) {
-		try {
-			await receiveEmail(event, env, ctx);
-		} catch (e) {
-			console.error("Failed to process incoming email:", (e as Error).message, (e as Error).stack);
-			// Re-throw so Cloudflare's email routing can retry delivery or bounce the message.
-			// Swallowing the error would silently drop the email.
-			throw e;
-		}
-	},
+  fetch: app.fetch,
+  async email(event: { raw: ReadableStream; rawSize: number }, env: Env, ctx: ExecutionContext) {
+    try {
+      await receiveEmail(event, env, ctx);
+    } catch (e) {
+      console.error("Failed to process incoming email:", (e as Error).message, (e as Error).stack);
+      // Re-throw so Cloudflare's email routing can retry delivery or bounce the message.
+      // Swallowing the error would silently drop the email.
+      throw e;
+    }
+  },
 };

@@ -5,55 +5,63 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
 export const folders = sqliteTable("folders", {
-	id: text("id").primaryKey(),
-	name: text("name").notNull().unique(),
-	is_deletable: integer("is_deletable").notNull().default(1),
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  is_deletable: integer("is_deletable").notNull().default(1),
 });
 
 export const emails = sqliteTable("emails", {
-	id: text("id").primaryKey(),
-	folder_id: text("folder_id")
-		.notNull()
-		.references(() => folders.id, { onDelete: "cascade" }),
-	subject: text("subject"),
-	sender: text("sender"),
-	recipient: text("recipient"),
-	cc: text("cc"),
-	bcc: text("bcc"),
-	date: text("date"),
-	read: integer("read").default(0),
-	starred: integer("starred").default(0),
-	body: text("body"),
-	in_reply_to: text("in_reply_to"),
-	email_references: text("email_references"),
-	thread_id: text("thread_id"),
-	message_id: text("message_id"),
-	raw_headers: text("raw_headers"),
+  id: text("id").primaryKey(),
+  folder_id: text("folder_id")
+    .notNull()
+    .references(() => folders.id, { onDelete: "cascade" }),
+  subject: text("subject"),
+  sender: text("sender"),
+  recipient: text("recipient"),
+  cc: text("cc"),
+  bcc: text("bcc"),
+  date: text("date"),
+  read: integer("read").default(0),
+  starred: integer("starred").default(0),
+  body: text("body"),
+  in_reply_to: text("in_reply_to"),
+  email_references: text("email_references"),
+  thread_id: text("thread_id"),
+  message_id: text("message_id"),
+  raw_headers: text("raw_headers"),
 });
 
 export const attachments = sqliteTable("attachments", {
-	id: text("id").primaryKey(),
-	email_id: text("email_id")
-		.notNull()
-		.references(() => emails.id, { onDelete: "cascade" }),
-	filename: text("filename").notNull(),
-	mimetype: text("mimetype").notNull(),
-	size: integer("size").notNull(),
-	content_id: text("content_id"),
-	disposition: text("disposition"),
+  id: text("id").primaryKey(),
+  email_id: text("email_id")
+    .notNull()
+    .references(() => emails.id, { onDelete: "cascade" }),
+  filename: text("filename").notNull(),
+  mimetype: text("mimetype").notNull(),
+  size: integer("size").notNull(),
+  content_id: text("content_id"),
+  disposition: text("disposition"),
 });
 
 export const labels = sqliteTable("labels", {
-	id: text("id").primaryKey(),
-	name: text("name").notNull().unique(),
-	color: text("color").notNull(),
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  color: text("color").notNull(),
 });
 
 export const emailLabels = sqliteTable("email_labels", {
-	email_id: text("email_id")
-		.notNull()
-		.references(() => emails.id, { onDelete: "cascade" }),
-	label_id: text("label_id")
-		.notNull()
-		.references(() => labels.id, { onDelete: "cascade" }),
+  email_id: text("email_id")
+    .notNull()
+    .references(() => emails.id, { onDelete: "cascade" }),
+  label_id: text("label_id")
+    .notNull()
+    .references(() => labels.id, { onDelete: "cascade" }),
+});
+
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  endpoint: text("endpoint").primaryKey(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  expiration_time: integer("expiration_time"),
+  created_at: text("created_at").notNull(),
 });
