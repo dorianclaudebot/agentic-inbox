@@ -5,316 +5,348 @@
 import { Button, Tooltip } from "@cloudflare/kumo";
 import { useEffect, useRef, useState } from "react";
 import {
-	ArrowBendUpLeftIcon,
-	ArrowBendUpRightIcon,
-	ArrowLeftIcon,
-	ChatCircleIcon,
-	CodeIcon,
-	EnvelopeOpenIcon,
-	EnvelopeSimpleIcon,
-	FolderSimpleIcon,
-	PaperPlaneTiltIcon,
-	PencilSimpleIcon,
-	StarIcon,
-	TrashIcon,
-	XIcon,
+  ArrowBendUpLeftIcon,
+  ArrowBendUpRightIcon,
+  ArrowLeftIcon,
+  ChatCircleIcon,
+  CodeIcon,
+  EnvelopeOpenIcon,
+  EnvelopeSimpleIcon,
+  FolderSimpleIcon,
+  MagicWandIcon,
+  PaperPlaneTiltIcon,
+  PencilSimpleIcon,
+  StarIcon,
+  TrashIcon,
+  XIcon,
 } from "@phosphor-icons/react";
 import type { Folder, Email, Label } from "~/types";
 
 interface EmailPanelToolbarProps {
-	email: Email;
-	mailboxId?: string;
-	isDraftFolder: boolean;
-	isSending: boolean;
-	moveToFolders: Folder[];
-	labels: Label[];
-	lastReceivedMessage?: Email;
-	onBack: () => void;
-	onSendDraft: () => void;
-	onEditDraft: () => void;
-	onReply: () => void;
-	onReplyAll: () => void;
-	onForward: () => void;
-	onToggleStar: () => void;
-	onToggleRead: () => void;
-	onMove: (folderId: string) => void;
-	onApplyLabel: (labelId: string) => void;
-	onRemoveLabel: (labelId: string) => void;
-	onViewSource: () => void;
-	onDelete: () => void;
+  email: Email;
+  mailboxId?: string;
+  isDraftFolder: boolean;
+  isSending: boolean;
+  moveToFolders: Folder[];
+  labels: Label[];
+  canDraftReply: boolean;
+  isDraftingReply: boolean;
+  onBack: () => void;
+  onSendDraft: () => void;
+  onEditDraft: () => void;
+  onReply: () => void;
+  onReplyAll: () => void;
+  onForward: () => void;
+  onDraftReply: () => void;
+  onToggleStar: () => void;
+  onToggleRead: () => void;
+  onMove: (folderId: string) => void;
+  onApplyLabel: (labelId: string) => void;
+  onRemoveLabel: (labelId: string) => void;
+  onViewSource: () => void;
+  onDelete: () => void;
 }
 
 export default function EmailPanelToolbar({
-	email,
-	mailboxId,
-	isDraftFolder,
-	isSending,
-	moveToFolders,
-	labels,
-	onBack,
-	onSendDraft,
-	onEditDraft,
-	onReply,
-	onReplyAll,
-	onForward,
-	onToggleStar,
-	onToggleRead,
-	onMove,
-	onApplyLabel,
-	onRemoveLabel,
-	onViewSource,
-	onDelete,
+  email,
+  mailboxId,
+  isDraftFolder,
+  isSending,
+  moveToFolders,
+  labels,
+  canDraftReply,
+  isDraftingReply,
+  onBack,
+  onSendDraft,
+  onEditDraft,
+  onReply,
+  onReplyAll,
+  onForward,
+  onDraftReply,
+  onToggleStar,
+  onToggleRead,
+  onMove,
+  onApplyLabel,
+  onRemoveLabel,
+  onViewSource,
+  onDelete,
 }: EmailPanelToolbarProps) {
-	return (
-		<div className="flex items-center gap-1 px-3 py-2 border-b border-kumo-line shrink-0 md:px-4">
-			<Button
-				variant="ghost"
-				shape="square"
-				size="sm"
-				icon={<ArrowLeftIcon size={18} />}
-				onClick={onBack}
-				aria-label="Back to list"
-				className="md:hidden shrink-0"
-			/>
+  return (
+    <div className="flex items-center gap-1 px-3 py-2 border-b border-kumo-line shrink-0 md:px-4">
+      <Button
+        variant="ghost"
+        shape="square"
+        size="sm"
+        icon={<ArrowLeftIcon size={18} />}
+        onClick={onBack}
+        aria-label="Back to list"
+        className="md:hidden shrink-0"
+      />
 
-			{isDraftFolder ? (
-				<>
-					<Button
-						variant="primary"
-						size="sm"
-						icon={<PaperPlaneTiltIcon size={16} />}
-						onClick={onSendDraft}
-						loading={isSending}
-					>
-						{isSending ? "Sending..." : "Send"}
-					</Button>
-					<Button
-						variant="secondary"
-						size="sm"
-						icon={<PencilSimpleIcon size={16} />}
-						onClick={onEditDraft}
-					>
-						Edit
-					</Button>
-				</>
-			) : (
-				<>
-					<Tooltip content="Reply" side="bottom" asChild>
-						<Button
-							variant="ghost"
-							shape="square"
-							size="sm"
-							icon={<ArrowBendUpLeftIcon size={18} />}
-							onClick={onReply}
-							aria-label="Reply"
-						/>
-					</Tooltip>
-					<Tooltip content="Reply All" side="bottom" asChild>
-						<Button
-							variant="ghost"
-							shape="square"
-							size="sm"
-							icon={<ChatCircleIcon size={18} />}
-							onClick={onReplyAll}
-							aria-label="Reply All"
-						/>
-					</Tooltip>
-					<Tooltip content="Forward" side="bottom" asChild>
-						<Button
-							variant="ghost"
-							shape="square"
-							size="sm"
-							icon={<ArrowBendUpRightIcon size={18} />}
-							onClick={onForward}
-							aria-label="Forward"
-						/>
-					</Tooltip>
-				</>
-			)}
+      {isDraftFolder ? (
+        <>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<PaperPlaneTiltIcon size={16} />}
+            onClick={onSendDraft}
+            loading={isSending}
+          >
+            {isSending ? "Sending..." : "Send"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<PencilSimpleIcon size={16} />}
+            onClick={onEditDraft}
+          >
+            Edit
+          </Button>
+        </>
+      ) : (
+        <>
+          <Tooltip content="Reply" side="bottom" asChild>
+            <Button
+              variant="ghost"
+              shape="square"
+              size="sm"
+              icon={<ArrowBendUpLeftIcon size={18} />}
+              onClick={onReply}
+              aria-label="Reply"
+            />
+          </Tooltip>
+          <Tooltip content="Reply All" side="bottom" asChild>
+            <Button
+              variant="ghost"
+              shape="square"
+              size="sm"
+              icon={<ChatCircleIcon size={18} />}
+              onClick={onReplyAll}
+              aria-label="Reply All"
+            />
+          </Tooltip>
+          <Tooltip content="Forward" side="bottom" asChild>
+            <Button
+              variant="ghost"
+              shape="square"
+              size="sm"
+              icon={<ArrowBendUpRightIcon size={18} />}
+              onClick={onForward}
+              aria-label="Forward"
+            />
+          </Tooltip>
+          {canDraftReply && (
+            <Tooltip content={isDraftingReply ? "Drafting…" : "Draft reply"} side="bottom" asChild>
+              <Button
+                variant="ghost"
+                shape="square"
+                size="sm"
+                icon={<MagicWandIcon size={18} />}
+                onClick={onDraftReply}
+                disabled={isSending || isDraftingReply}
+                loading={isDraftingReply}
+                aria-label="Draft reply"
+              />
+            </Tooltip>
+          )}
+        </>
+      )}
 
-			<div className="h-5 w-px bg-kumo-fill mx-0.5" />
+      <div className="h-5 w-px bg-kumo-fill mx-0.5" />
 
-			<Tooltip content={email.starred ? "Unstar" : "Star"} side="bottom" asChild>
-				<Button
-					variant="ghost"
-					shape="square"
-					size="sm"
-					icon={
-						<StarIcon
-							size={18}
-							weight={email.starred ? "fill" : "regular"}
-							className={email.starred ? "text-kumo-warning" : ""}
-						/>
-					}
-					onClick={onToggleStar}
-					aria-label={email.starred ? "Unstar" : "Star"}
-				/>
-			</Tooltip>
+      <Tooltip content={email.starred ? "Unstar" : "Star"} side="bottom" asChild>
+        <Button
+          variant="ghost"
+          shape="square"
+          size="sm"
+          icon={
+            <StarIcon
+              size={18}
+              weight={email.starred ? "fill" : "regular"}
+              className={email.starred ? "text-kumo-warning" : ""}
+            />
+          }
+          onClick={onToggleStar}
+          aria-label={email.starred ? "Unstar" : "Star"}
+        />
+      </Tooltip>
 
-			<Tooltip content={email.read ? "Mark as unread" : "Mark as read"} side="bottom" asChild>
-				<Button
-					variant="ghost"
-					shape="square"
-					size="sm"
-					icon={email.read ? <EnvelopeSimpleIcon size={18} /> : <EnvelopeOpenIcon size={18} />}
-					onClick={onToggleRead}
-					aria-label={email.read ? "Mark as unread" : "Mark as read"}
-				/>
-			</Tooltip>
+      <Tooltip content={email.read ? "Mark as unread" : "Mark as read"} side="bottom" asChild>
+        <Button
+          variant="ghost"
+          shape="square"
+          size="sm"
+          icon={email.read ? <EnvelopeSimpleIcon size={18} /> : <EnvelopeOpenIcon size={18} />}
+          onClick={onToggleRead}
+          aria-label={email.read ? "Mark as unread" : "Mark as read"}
+        />
+      </Tooltip>
 
-			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
-			<LabelMenu
-				labels={labels}
-				applied={email.labels ?? []}
-				onApply={onApplyLabel}
-				onRemove={onRemoveLabel}
-			/>
+      <MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
+      <LabelMenu
+        labels={labels}
+        applied={email.labels ?? []}
+        onApply={onApplyLabel}
+        onRemove={onRemoveLabel}
+      />
 
-			<div className="ml-auto flex items-center gap-0.5">
-				<Tooltip content="View source" side="bottom" asChild>
-					<Button
-						variant="ghost"
-						shape="square"
-						size="sm"
-						icon={<CodeIcon size={18} />}
-						onClick={onViewSource}
-						aria-label="View source"
-					/>
-				</Tooltip>
-				<Tooltip content="Delete" side="bottom" asChild>
-					<Button
-						variant="ghost"
-						shape="square"
-						size="sm"
-						icon={<TrashIcon size={18} />}
-						onClick={onDelete}
-						aria-label="Delete"
-					/>
-				</Tooltip>
-				<Tooltip content="Close" side="bottom" asChild>
-					<Button
-						variant="ghost"
-						shape="square"
-						size="sm"
-						icon={<XIcon size={18} />}
-						onClick={onBack}
-						aria-label="Close"
-						className="hidden md:inline-flex"
-					/>
-				</Tooltip>
-			</div>
-		</div>
-	);
+      <div className="ml-auto flex items-center gap-0.5">
+        <Tooltip content="View source" side="bottom" asChild>
+          <Button
+            variant="ghost"
+            shape="square"
+            size="sm"
+            icon={<CodeIcon size={18} />}
+            onClick={onViewSource}
+            aria-label="View source"
+          />
+        </Tooltip>
+        <Tooltip content="Delete" side="bottom" asChild>
+          <Button
+            variant="ghost"
+            shape="square"
+            size="sm"
+            icon={<TrashIcon size={18} />}
+            onClick={onDelete}
+            aria-label="Delete"
+          />
+        </Tooltip>
+        <Tooltip content="Close" side="bottom" asChild>
+          <Button
+            variant="ghost"
+            shape="square"
+            size="sm"
+            icon={<XIcon size={18} />}
+            onClick={onBack}
+            aria-label="Close"
+            className="hidden md:inline-flex"
+          />
+        </Tooltip>
+      </div>
+    </div>
+  );
 }
 
 function LabelMenu({
-	labels,
-	applied,
-	onApply,
-	onRemove,
+  labels,
+  applied,
+  onApply,
+  onRemove,
 }: {
-	labels: Label[];
-	applied: Label[];
-	onApply: (id: string) => void;
-	onRemove: (id: string) => void;
+  labels: Label[];
+  applied: Label[];
+  onApply: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
-	const [open, setOpen] = useState(false);
-	const ref = useRef<HTMLDivElement>(null);
-	const appliedIds = new Set(applied.map((label) => label.id));
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const appliedIds = new Set(applied.map((label) => label.id));
 
-	useEffect(() => {
-		if (!open) return;
-		const handler = (e: MouseEvent) => {
-			if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-		};
-		document.addEventListener("mousedown", handler);
-		return () => document.removeEventListener("mousedown", handler);
-	}, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
-	return (
-		<div ref={ref} className="relative">
-			<Tooltip content="Labels" side="bottom" asChild>
-				<Button
-					variant="ghost"
-					shape="square"
-					size="sm"
-					icon={<EnvelopeSimpleIcon size={18} />}
-					onClick={() => setOpen((o) => !o)}
-					aria-label="Labels"
-				/>
-			</Tooltip>
-			{open && (
-				<div className="absolute top-full left-0 z-50 mt-1 min-w-[180px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
-					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Labels</div>
-					<div className="h-px bg-kumo-line my-1" />
-					{labels.length === 0 && (
-						<div className="px-3 py-1.5 text-sm text-kumo-subtle">No labels yet</div>
-					)}
-					{labels.map((label) => {
-						const isOn = appliedIds.has(label.id);
-						return (
-							<button
-								key={label.id}
-								type="button"
-								className="w-full text-left px-3 py-1.5 text-sm text-kumo-default hover:bg-kumo-overlay transition-colors flex items-center gap-2"
-								onClick={() => {
-									if (isOn) onRemove(label.id);
-									else onApply(label.id);
-								}}
-							>
-								<span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
-								<span className="truncate flex-1">{label.name}</span>
-								{isOn && <span className="text-xs text-kumo-subtle">on</span>}
-							</button>
-						);
-					})}
-				</div>
-			)}
-		</div>
-	);
+  return (
+    <div ref={ref} className="relative">
+      <Tooltip content="Labels" side="bottom" asChild>
+        <Button
+          variant="ghost"
+          shape="square"
+          size="sm"
+          icon={<EnvelopeSimpleIcon size={18} />}
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Labels"
+        />
+      </Tooltip>
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-1 min-w-[180px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
+          <div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Labels</div>
+          <div className="h-px bg-kumo-line my-1" />
+          {labels.length === 0 && (
+            <div className="px-3 py-1.5 text-sm text-kumo-subtle">No labels yet</div>
+          )}
+          {labels.map((label) => {
+            const isOn = appliedIds.has(label.id);
+            return (
+              <button
+                key={label.id}
+                type="button"
+                className="w-full text-left px-3 py-1.5 text-sm text-kumo-default hover:bg-kumo-overlay transition-colors flex items-center gap-2"
+                onClick={() => {
+                  if (isOn) onRemove(label.id);
+                  else onApply(label.id);
+                }}
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: label.color }}
+                />
+                <span className="truncate flex-1">{label.name}</span>
+                {isOn && <span className="text-xs text-kumo-subtle">on</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
-function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id: string) => void }) {
-	const [open, setOpen] = useState(false);
-	const ref = useRef<HTMLDivElement>(null);
+function MoveToFolderMenu({
+  folders,
+  onMove,
+}: {
+  folders: Folder[];
+  onMove: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-	useEffect(() => {
-		if (!open) return;
-		const handler = (e: MouseEvent) => {
-			if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-		};
-		document.addEventListener("mousedown", handler);
-		return () => document.removeEventListener("mousedown", handler);
-	}, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
-	return (
-		<div ref={ref} className="relative">
-			<Tooltip content="Move to folder" side="bottom" asChild>
-				<Button
-					variant="ghost"
-					shape="square"
-					size="sm"
-					icon={<FolderSimpleIcon size={18} />}
-					onClick={() => setOpen((o) => !o)}
-					aria-label="Move to folder"
-				/>
-			</Tooltip>
-			{open && (
-				<div className="absolute top-full left-0 z-50 mt-1 min-w-[160px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
-					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Move to</div>
-					<div className="h-px bg-kumo-line my-1" />
-					{folders.map((f) => (
-						<button
-							key={f.id}
-							type="button"
-							className="w-full text-left px-3 py-1.5 text-sm text-kumo-default hover:bg-kumo-overlay transition-colors"
-							onClick={() => { onMove(f.id); setOpen(false); }}
-						>
-							{f.name}
-						</button>
-					))}
-				</div>
-			)}
-		</div>
-	);
+  return (
+    <div ref={ref} className="relative">
+      <Tooltip content="Move to folder" side="bottom" asChild>
+        <Button
+          variant="ghost"
+          shape="square"
+          size="sm"
+          icon={<FolderSimpleIcon size={18} />}
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Move to folder"
+        />
+      </Tooltip>
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-1 min-w-[160px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
+          <div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Move to</div>
+          <div className="h-px bg-kumo-line my-1" />
+          {folders.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-sm text-kumo-default hover:bg-kumo-overlay transition-colors"
+              onClick={() => {
+                onMove(f.id);
+                setOpen(false);
+              }}
+            >
+              {f.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

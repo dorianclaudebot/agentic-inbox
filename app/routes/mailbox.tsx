@@ -17,18 +17,25 @@ export default function MailboxRoute() {
   // Prefetch mailbox data for child components
   useMailbox(mailboxId);
   const prevMailboxIdRef = useRef<string | undefined>(undefined);
-  const { isSidebarOpen, closeSidebar, isAgentPanelOpen, closePanel, closeComposeModal } =
-    useUIStore();
+  const {
+    isSidebarOpen,
+    closeSidebar,
+    isAgentPanelOpen,
+    closeAgentPanel,
+    closePanel,
+    closeComposeModal,
+  } = useUIStore();
 
   useEffect(() => {
     if (prevMailboxIdRef.current && mailboxId && prevMailboxIdRef.current !== mailboxId) {
       closePanel();
       closeComposeModal();
       closeSidebar();
+      closeAgentPanel();
     }
 
     prevMailboxIdRef.current = mailboxId;
-  }, [mailboxId, closeComposeModal, closePanel, closeSidebar]);
+  }, [mailboxId, closeComposeModal, closePanel, closeSidebar, closeAgentPanel]);
 
   useEffect(() => {
     if (!mailboxId) return;
@@ -68,9 +75,14 @@ export default function MailboxRoute() {
         </main>
       </div>
 
-      {/* Agent + MCP sidebar -- togglable on desktop */}
       {isAgentPanelOpen && (
-        <div className="hidden lg:flex w-[380px] shrink-0 border-l border-kumo-line flex-col bg-kumo-base overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-kumo-base overflow-hidden lg:static lg:z-auto lg:w-[380px] lg:shrink-0 lg:border-l lg:border-kumo-line"
+          role="dialog"
+          aria-label="Agent panel"
+          tabIndex={-1}
+          onKeyDown={(e) => e.key === "Escape" && closeAgentPanel()}
+        >
           <AgentSidebar />
         </div>
       )}

@@ -33,6 +33,12 @@ import {
   MOVE_FOLDER_TOOL_DESCRIPTION,
 } from "../../shared/folders";
 import type { Env } from "../types";
+import { AGENT_DRAFT_PATHS, type AgentDraftPath, type AgentDraftPayload } from "../lib/agent-draft";
+import {
+  agentSystemPromptFromSettings,
+  isAutoDraftRepliesEnabled,
+  loadMailboxSettings,
+} from "../lib/mailbox-settings";
 
 const AGENT_MODEL = "@cf/zai-org/glm-4.7-flash" as const;
 
@@ -95,19 +101,71 @@ Use discard_draft to delete drafts that the operator rejects or that are no long
  * Falls back to DEFAULT_SYSTEM_PROMPT if none is configured.
  */
 async function getSystemPrompt(env: Env, mailboxId: string): Promise<string> {
-  try {
-    const key = `mailboxes/${mailboxId}.json`;
-    const obj = await env.BUCKET.get(key);
-    if (obj) {
-      const settings = await obj.json<Record<string, unknown>>();
-      if (typeof settings.agentSystemPrompt === "string" && settings.agentSystemPrompt.trim()) {
-        return settings.agentSystemPrompt;
-      }
+  const settings = await loadMailboxSettings(env.BUCKET, mailboxId);
+  return agentSystemPromptFromSettings(settings, DEFAULT_SYSTEM_PROMPT);
+}
+
+type DraftTriggerSource = "auto" | "manual";
+
+function draftSourceFromPath(pathname: AgentDraftPath): DraftTriggerSource {
+  switch (pathname) {
+    case AGENT_DRAFT_PATHS.auto:
+      return "auto";
+    case AGENT_DRAFT_PATHS.manual:
+      return "manual";
+    default: {
+      const _exhaustive: never = pathname;
+      return _exhaustive;
     }
-  } catch {
-    // Fall through to default
   }
-  return DEFAULT_SYSTEM_PROMPT;
+}
+
+function isAgentDraftPath(pathname: string): pathname is AgentDraftPath {
+  return pathname === AGENT_DRAFT_PATHS.auto || pathname === AGENT_DRAFT_PATHS.manual;
+}
+
+function draftTriggerLabel(source: DraftTriggerSource): string {
+  switch (source) {
+    case "auto":
+      return "Auto-triggered";
+    case "manual":
+      return "Requested";
+    default: {
+      const _exhaustive: never = source;
+      return _exhaustive;
+    }
+  }
+}
+
+function draftRequestIntro(source: DraftTriggerSource): string {
+  switch (source) {
+    case "auto":
+      return "A new email just arrived. Draft an appropriate response using draft_reply.";
+    case "manual":
+      return "The operator requested a draft reply to this email. Draft an appropriate response using draft_reply.";
+    default: {
+      const _exhaustive: never = source;
+      return _exhaustive;
+    }
+  }
+}
+
+function draftRequestUserSummary(
+  source: DraftTriggerSource,
+  sender: string,
+  subject: string,
+): string {
+  const label = draftTriggerLabel(source);
+  switch (source) {
+    case "auto":
+      return `[${label}] New email from ${sender}: "${subject}"`;
+    case "manual":
+      return `[${label}] Draft reply to ${sender}: "${subject}"`;
+    default: {
+      const _exhaustive: never = source;
+      return _exhaustive;
+    }
+  }
 }
 
 function createEmailTools(env: Env, mailboxId: string) {
@@ -327,25 +385,31 @@ export class EmailAgent extends AIChatAgent<any> {
 
   /**
    * Handle HTTP requests to the agent DO. Intercepts /onNewEmail
-   * before passing to the default AIChatAgent handler.
+   * and /draftReply before passing to the default AIChatAgent handler.
    */
   async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/onNewEmail" && request.method === "POST") {
+    if (request.method === "POST" && isAgentDraftPath(url.pathname)) {
       try {
-        const emailData = (await request.json()) as {
-          mailboxId: string;
-          emailId: string;
-          sender: string;
-          subject: string;
-          threadId: string;
-        };
-        const result = await this.handleNewEmail(emailData);
-        return new Response(JSON.stringify(result), {
+        const emailData = (await request.json()) as AgentDraftPayload;
+        const source = draftSourceFromPath(url.pathname);
+        if (source === "auto") {
+          const settings = await loadMailboxSettings(this.env.BUCKET, emailData.mailboxId);
+          if (!isAutoDraftRepliesEnabled(settings)) {
+            return new Response(
+              JSON.stringify({ status: "skipped", reason: "auto_draft_disabled" }),
+              {
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+        }
+        const result = await this.handleNewEmail(emailData, source);
+        return new Response(JSON.stringify(result ?? { status: "ok" }), {
           headers: { "Content-Type": "application/json" },
         });
       } catch (e) {
-        console.error("onNewEmail handler failed:", (e as Error).message);
+        console.error("draft handler failed:", (e as Error).message);
         return new Response(JSON.stringify({ error: (e as Error).message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
@@ -356,20 +420,15 @@ export class EmailAgent extends AIChatAgent<any> {
   }
 
   /**
-   * Called when a new email arrives. Reads it, loads the thread,
-   * drafts a response, and saves it to the Drafts folder.
+   * Draft a reply for an email: reads it, loads the thread,
+   * and saves a draft via draft_reply (or inline fallback).
    */
-  async handleNewEmail(emailData: {
-    mailboxId: string;
-    emailId: string;
-    sender: string;
-    subject: string;
-    threadId: string;
-  }) {
+  async handleNewEmail(emailData: AgentDraftPayload, source: DraftTriggerSource = "auto") {
     const env = this.env as Env;
     const workersai = createWorkersAI({ binding: env.AI });
     const tools = createEmailTools(env, emailData.mailboxId);
     const systemPrompt = await getSystemPrompt(env, emailData.mailboxId);
+    const userSummary = draftRequestUserSummary(source, emailData.sender, emailData.subject);
 
     // Pre-read the email and thread so the agent has full context
     // without needing to waste tool calls discovering it
@@ -389,12 +448,12 @@ export class EmailAgent extends AIChatAgent<any> {
             {
               id: crypto.randomUUID(),
               role: "user" as const,
-              content: `[Auto-triggered] New email from ${emailData.sender}: "${emailData.subject}"`,
+              content: userSummary,
               createdAt: new Date(),
               parts: [
                 {
                   type: "text" as const,
-                  text: `[Auto-triggered] New email from ${emailData.sender}: "${emailData.subject}"`,
+                  text: userSummary,
                 },
               ],
             },
@@ -414,7 +473,7 @@ export class EmailAgent extends AIChatAgent<any> {
           ];
           await this.persistMessages([...this.messages, ...newMessages]);
 
-          return;
+          return { status: "blocked", reason: "prompt_injection" };
         }
 
         emailBody = stripHtmlToText(email.body);
@@ -462,12 +521,12 @@ export class EmailAgent extends AIChatAgent<any> {
               {
                 id: crypto.randomUUID(),
                 role: "user" as const,
-                content: `[Auto-triggered] New email from ${emailData.sender}: "${emailData.subject}"`,
+                content: userSummary,
                 createdAt: new Date(),
                 parts: [
                   {
                     type: "text" as const,
-                    text: `[Auto-triggered] New email from ${emailData.sender}: "${emailData.subject}"`,
+                    text: userSummary,
                   },
                 ],
               },
@@ -486,7 +545,7 @@ export class EmailAgent extends AIChatAgent<any> {
               },
             ];
             await this.persistMessages([...this.messages, ...newMessages]);
-            return;
+            return { status: "blocked", reason: "prompt_injection" };
           }
         }
       }
@@ -494,7 +553,7 @@ export class EmailAgent extends AIChatAgent<any> {
       console.warn("Pre-read failed, agent will use tools:", (e as Error).message);
     }
 
-    let autoPrompt = `A new email just arrived. Draft an appropriate response using draft_reply.
+    let autoPrompt = `${draftRequestIntro(source)}
 
 Email details:
 - Mailbox: ${emailData.mailboxId}
@@ -592,12 +651,12 @@ Based on the email content and thread context above, draft a reply using draft_r
         {
           id: crypto.randomUUID(),
           role: "user" as const,
-          content: `[Auto-triggered] New email from ${emailData.sender}: "${emailData.subject}"`,
+          content: userSummary,
           createdAt: new Date(),
           parts: [
             {
               type: "text" as const,
-              text: `[Auto-triggered] New email from ${emailData.sender}: "${emailData.subject}"`,
+              text: userSummary,
             },
           ],
         },

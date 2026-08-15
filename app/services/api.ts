@@ -18,22 +18,26 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(
+  url: string,
+  options: RequestInit & { timeoutMs?: number } = {},
+): Promise<T> {
+  const { timeoutMs = REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   // Combine caller signal (e.g. TanStack Query abort) with our timeout signal
-  const signal = options.signal
-    ? AbortSignal.any([options.signal, controller.signal])
+  const signal = fetchOptions.signal
+    ? AbortSignal.any([fetchOptions.signal, controller.signal])
     : controller.signal;
 
   try {
     const res = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       signal,
       headers: {
         "Content-Type": "application/json",
-        ...(options.headers as Record<string, string>),
+        ...(fetchOptions.headers as Record<string, string>),
       },
     });
 
@@ -66,10 +70,11 @@ function get<T>(
   });
 }
 
-function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal }) {
+function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal; timeoutMs?: number }) {
   return request<T>(url, {
     method: "POST",
     signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs,
     body: body != null ? JSON.stringify(body) : undefined,
   });
 }
@@ -135,6 +140,11 @@ const api = {
     get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, { signal: opts?.signal }),
   markThreadRead: (mailboxId: string, threadId: string) =>
     post<void>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/read`),
+  moveThread: (mailboxId: string, threadId: string, folderId: string, sourceFolderId?: string) =>
+    post<void>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/move`, {
+      folderId,
+      sourceFolderId,
+    }),
   getAttachment: (mailboxId: string, emailId: string, attachmentId: string) =>
     get<Blob>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`, {
       responseType: "blob",
@@ -154,6 +164,12 @@ const api = {
   ) => post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
   replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>
     post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
+  draftReply: (mailboxId: string, emailId: string) =>
+    post<{ status: string; text?: string; error?: string; reason?: string }>(
+      `/api/v1/mailboxes/${mailboxId}/emails/${emailId}/draft-reply`,
+      undefined,
+      { timeoutMs: 120_000 },
+    ),
   forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
     post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`, email),
 

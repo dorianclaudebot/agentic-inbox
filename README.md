@@ -90,9 +90,10 @@ cp android/twa-manifest.example.json android/twa-manifest.json
 # set host, packageId, and icon URLs to your origin
 npm run android:icons   # once, after changing public/favicon.svg
 npm run android:apk     # writes android/ (gitignored) and builds app-debug.apk
+npm run android:sideload  # adb install -r --user 0 (personal profile only)
 ```
 
-Sideload `android/app/build/outputs/apk/debug/app-debug.apk`. First launch opens Cloudflare Access in Chrome.
+Sideload installs to user 0 (personal / owner), not Private Space. Set `ANDROID_SERIAL` if more than one device is attached. First launch opens Cloudflare Access in Chrome. Private Space on GrapheneOS is often user 12: `adb install -r --user 12 android/app/build/outputs/apk/debug/app-debug.apk`.
 
 Chrome hides the URL bar only when Digital Asset Links verify. That needs:
 

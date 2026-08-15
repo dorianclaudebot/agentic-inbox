@@ -16,6 +16,7 @@ import type { PreviewTarget } from "~/lib/attachments";
 import api from "~/services/api";
 import {
   useDeleteEmail,
+  useDraftReply,
   useEmail,
   useMoveEmail,
   useReplyToEmail,
@@ -61,6 +62,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
   const moveEmailMut = useMoveEmail();
   const sendEmailMut = useSendEmail();
   const replyMut = useReplyToEmail();
+  const draftReplyMut = useDraftReply();
   const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
   const { data: labels = [] } = useLabels(mailboxId);
   const applyLabelMut = useApplyLabel();
@@ -120,6 +122,11 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
     const nonDrafts = allMessages.filter((msg) => !draftMessageIds.has(msg.id));
     return nonDrafts.length > 0 ? nonDrafts[0] : email;
   }, [allMessages, draftMessageIds, currentMailbox?.email, email]);
+
+  const receivedMessageToReply = useMemo(() => {
+    const ce = currentMailbox?.email;
+    return allMessages.find((msg) => !draftMessageIds.has(msg.id) && msg.sender !== ce);
+  }, [allMessages, draftMessageIds, currentMailbox?.email]);
 
   const moveToFolders = useMemo(() => {
     const cur = folder || email?.folder_id;
@@ -225,6 +232,33 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
     }
   };
 
+  const handleDraftReply = async () => {
+    if (!mailboxId || !receivedMessageToReply || isSending || draftReplyMut.isPending) return;
+    try {
+      const result = await draftReplyMut.mutateAsync({
+        mailboxId,
+        emailId: receivedMessageToReply.id,
+      });
+      if (result.status === "blocked") {
+        toastManager.add({
+          title: "Could not draft this reply.",
+          variant: "error",
+        });
+        return;
+      }
+      if (result.status === "error") {
+        toastManager.add({
+          title: result.error || "Failed to draft reply.",
+          variant: "error",
+        });
+        return;
+      }
+      toastManager.add({ title: "Draft ready" });
+    } catch {
+      toastManager.add({ title: "Failed to draft reply.", variant: "error" });
+    }
+  };
+
   const hasThread = allMessages.length > 1;
 
   return (
@@ -246,6 +280,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
           })
         }
         onForward={() => startCompose({ mode: "forward", originalEmail: email })}
+        canDraftReply={!isDraftFolder && Boolean(receivedMessageToReply)}
+        isDraftingReply={draftReplyMut.isPending}
+        onDraftReply={handleDraftReply}
         onToggleStar={toggleStar}
         onToggleRead={() => {
           if (mailboxId) {

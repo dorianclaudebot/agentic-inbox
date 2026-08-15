@@ -21,6 +21,9 @@ import {
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
+import { handleDraftReply } from "./routes/draft-reply";
+import { AGENT_DRAFT_PATHS, fetchAgentDraft } from "./lib/agent-draft";
+import { isAutoDraftRepliesEnabled, loadMailboxSettings } from "./lib/mailbox-settings";
 import { handlePushSubscribe, handlePushUnsubscribe } from "./routes/push";
 import { notifyNewEmail } from "./lib/notify-new-email";
 import { mailboxEmail, mailboxEmails } from "./lib/postal-addresses";
@@ -360,10 +363,25 @@ app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c: AppCon
   return c.json({ status: "marked_read" });
 });
 
+app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/move", async (c: AppContext) => {
+  const { folderId, sourceFolderId } = (await c.req.json()) as {
+    folderId: string;
+    sourceFolderId?: string;
+  };
+  if (!folderId) return c.json({ error: "folderId required" }, 400);
+  const success = await c.var.mailboxStub.moveThread(
+    c.req.param("threadId")!,
+    folderId,
+    sourceFolderId,
+  );
+  return success ? c.json({ status: "moved" }) : c.json({ error: "Folder not found" }, 400);
+});
+
 // -- Reply / Forward ------------------------------------------------
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/reply", handleReplyEmail);
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/forward", handleForwardEmail);
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/draft-reply", handleDraftReply);
 
 // -- Folders --------------------------------------------------------
 
@@ -551,7 +569,8 @@ async function receiveEmail(
   if (!mailboxId) throw new Error("received email with no valid recipient address");
 
   const messageId = crypto.randomUUID();
-  if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) {
+  const mailboxSettings = await loadMailboxSettings(env.BUCKET, mailboxId);
+  if (mailboxSettings === null) {
     console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`);
     return;
   }
@@ -616,26 +635,19 @@ async function receiveEmail(
     attachmentData,
   );
 
-  const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
   const sender = (mailboxEmail(parsedEmail.from) || "").toLowerCase();
   const subject = parsedEmail.subject || "";
-  ctx.waitUntil(
-    agentStub
-      .fetch(
-        new Request("https://agents/onNewEmail", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mailboxId,
-            emailId: messageId,
-            sender,
-            subject,
-            threadId,
-          }),
-        }),
-      )
-      .catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)),
-  );
+  if (isAutoDraftRepliesEnabled(mailboxSettings)) {
+    ctx.waitUntil(
+      fetchAgentDraft(env, AGENT_DRAFT_PATHS.auto, {
+        mailboxId,
+        emailId: messageId,
+        sender,
+        subject,
+        threadId,
+      }).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)),
+    );
+  }
   ctx.waitUntil(
     notifyNewEmail(env, stub, { mailboxId, sender, subject }).catch((e) =>
       console.error("Web Push notify failed:", (e as Error).message),

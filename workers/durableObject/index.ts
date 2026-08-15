@@ -657,12 +657,7 @@ export class MailboxDO extends DurableObject<Env> {
   }
 
   async moveEmail(id: string, folderId: string) {
-    const folder = this.db
-      .select({ id: schema.folders.id })
-      .from(schema.folders)
-      .where(or(eq(schema.folders.id, folderId), eq(schema.folders.name, folderId)))
-      .get();
-
+    const folder = this.#resolveFolder(folderId);
     if (!folder) return false;
 
     this.db
@@ -672,6 +667,41 @@ export class MailboxDO extends DurableObject<Env> {
       .run();
 
     return true;
+  }
+
+  /**
+   * Move every email in a thread to `folderId`.
+   * When `sourceFolderId` is set, only messages currently in that folder move.
+   * Sent copies and drafts in other folders stay put.
+   */
+  async moveThread(threadId: string, folderId: string, sourceFolderId?: string) {
+    const folder = this.#resolveFolder(folderId);
+    if (!folder) return false;
+
+    const conditions: SQL[] = [eq(schema.emails.thread_id, threadId)];
+    if (sourceFolderId) {
+      const source = this.#resolveFolder(sourceFolderId);
+      if (!source) return false;
+      conditions.push(eq(schema.emails.folder_id, source.id));
+    }
+
+    this.db
+      .update(schema.emails)
+      .set({ folder_id: folder.id })
+      .where(and(...conditions))
+      .run();
+
+    return true;
+  }
+
+  #resolveFolder(folderId: string) {
+    return (
+      this.db
+        .select({ id: schema.folders.id })
+        .from(schema.folders)
+        .where(or(eq(schema.folders.id, folderId), eq(schema.folders.name, folderId)))
+        .get() ?? null
+    );
   }
 
   // ── Labels ─────────────────────────────────────────────────────

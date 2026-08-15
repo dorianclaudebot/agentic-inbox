@@ -11,7 +11,8 @@
     "preview": "npm run build && vite preview",
     "typecheck": "npm run cf-typegen && react-router typegen && tsc -b",
     "android:icons": "node scripts/android/generate-icons.mjs",
-    "android:apk": "node scripts/android/build-apk.mjs"
+    "android:apk": "node scripts/android/build-apk.mjs",
+    "android:sideload": "node scripts/android/sideload.mjs"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^1.0.2",
