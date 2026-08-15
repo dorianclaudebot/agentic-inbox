@@ -4,11 +4,16 @@
 
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { embedCidImages } from "~/lib/utils";
+import type { Attachment } from "~/types";
 
 interface EmailIframeProps {
-	body: string;
-	/** When true, iframe auto-sizes to content height instead of filling parent */
-	autoSize?: boolean;
+  body: string;
+  /** When true, iframe auto-sizes to content height instead of filling parent */
+  autoSize?: boolean;
+  mailboxId?: string;
+  emailId?: string;
+  attachments?: Attachment[];
 }
 
 /**
@@ -26,67 +31,87 @@ interface EmailIframeProps {
  *   the opaque-origin sandbox cannot access anything useful.
  * - A strict CSP meta tag blocks external resource loads inside the
  *   iframe as a defense-in-depth layer.
+ * - CID images are fetched in the parent and inlined as data URLs.
+ *   Relative `/api` URLs cannot send Access cookies from this origin.
  */
-export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
-	const iframeRef = useRef<HTMLIFrameElement>(null);
-	const [height, setHeight] = useState(autoSize ? 100 : 0);
+export default function EmailIframe({
+  body,
+  autoSize,
+  mailboxId,
+  emailId,
+  attachments,
+}: EmailIframeProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(autoSize ? 100 : 0);
 
-	// Listen for height reports from the sandboxed iframe
-	const handleMessage = useCallback(
-		(event: MessageEvent) => {
-			if (!autoSize) return;
-			// Only accept messages from our own iframe
-			if (event.source !== iframeRef.current?.contentWindow) return;
-			if (
-				event.data &&
-				typeof event.data === "object" &&
-				event.data.__emailIframeHeight &&
-				typeof event.data.height === "number" &&
-				event.data.height > 0
-			) {
-				setHeight(event.data.height);
-			}
-		},
-		[autoSize],
-	);
+  // Listen for height reports from the sandboxed iframe
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
+      if (!autoSize) return;
+      // Only accept messages from our own iframe
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (
+        event.data &&
+        typeof event.data === "object" &&
+        event.data.__emailIframeHeight &&
+        typeof event.data.height === "number" &&
+        event.data.height > 0
+      ) {
+        setHeight(event.data.height);
+      }
+    },
+    [autoSize],
+  );
 
-	useEffect(() => {
-		window.addEventListener("message", handleMessage);
-		return () => window.removeEventListener("message", handleMessage);
-	}, [handleMessage]);
+  useEffect(() => {
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [handleMessage]);
 
-	useEffect(() => {
-		const iframe = iframeRef.current;
-		if (!iframe || !body) return;
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !body) return;
+    const controller = new AbortController();
 
-		const cleanBody = DOMPurify.sanitize(body, {
-			USE_PROFILES: { html: true },
-			FORBID_TAGS: ["style"],
-			ADD_ATTR: ["target"],
-			FORCE_BODY: true,
-		});
+    void (async () => {
+      const withImages =
+        mailboxId && emailId
+          ? await embedCidImages(body, mailboxId, emailId, attachments, controller.signal)
+          : body;
+      if (controller.signal.aborted) return;
 
-		const padding = autoSize ? "0" : "24px";
+      const cleanBody = DOMPurify.sanitize(withImages, {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ["style"],
+        ADD_ATTR: ["target"],
+        FORCE_BODY: true,
+      });
 
-		// Height-reporting script: sends body.scrollHeight to the parent.
-		// Runs inside the opaque-origin sandbox so it has zero access to
-		// the parent page — it can only postMessage.
-		const heightScript = autoSize
-			? `<script>
+      const padding = autoSize ? "0" : "24px";
+
+      // Height-reporting script: sends body.scrollHeight to the parent.
+      // Runs inside the opaque-origin sandbox so it has zero access to
+      // the parent page — it can only postMessage.
+      const heightScript = autoSize
+        ? `<script>
 				function reportHeight() {
 					var h = document.body.scrollHeight;
 					if (h > 0) parent.postMessage({ __emailIframeHeight: true, height: h }, "*");
 				}
 				reportHeight();
+				document.querySelectorAll("img").forEach(function (img) {
+					img.addEventListener("load", reportHeight);
+					img.addEventListener("error", reportHeight);
+				});
 				setTimeout(reportHeight, 50);
 				setTimeout(reportHeight, 150);
 				setTimeout(reportHeight, 400);
 			<\/script>`
-			: "";
+        : "";
 
-		// Use srcdoc so the iframe is truly sandboxed (no same-origin access).
-		// We can't use doc.write() because that requires allow-same-origin.
-		iframe.srcdoc = `<!DOCTYPE html>
+      // Use srcdoc so the iframe is truly sandboxed (no same-origin access).
+      // We can't use doc.write() because that requires allow-same-origin.
+      iframe.srcdoc = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -137,15 +162,18 @@ ul, ol { padding-left: 20px; margin: 4px 0; }
 </head>
 <body>${cleanBody}${heightScript}</body>
 </html>`;
-	}, [body, autoSize]);
+    })();
 
-	return (
-		<iframe
-			ref={iframeRef}
-			className="block w-full border-0"
-			style={autoSize ? { height: `${height}px` } : { height: "100%" }}
-			sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"
-			title="Email content"
-		/>
-	);
+    return () => controller.abort();
+  }, [body, autoSize, mailboxId, emailId, attachments]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      className="block w-full border-0"
+      style={autoSize ? { height: `${height}px` } : { height: "100%" }}
+      sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"
+      title="Email content"
+    />
+  );
 }

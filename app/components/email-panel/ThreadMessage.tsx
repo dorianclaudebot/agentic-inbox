@@ -14,7 +14,7 @@ import {
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
 import type { PreviewTarget } from "~/lib/attachments";
-import { formatDetailDate, formatShortDate, rewriteInlineImages, stripHtml } from "~/lib/utils";
+import { formatDetailDate, formatShortDate, stripHtml } from "~/lib/utils";
 import type { Email } from "~/types";
 
 interface ThreadMessageProps {
@@ -158,12 +158,10 @@ export default function ThreadMessage({
 
         <div className="md:ml-[42px]">
           <EmailIframe
-            body={rewriteInlineImages(
-              email.body || "",
-              mailboxId || "",
-              email.id,
-              email.attachments,
-            )}
+            body={email.body || ""}
+            mailboxId={mailboxId}
+            emailId={email.id}
+            attachments={email.attachments}
             autoSize
           />
         </div>
