@@ -1,0 +1,75 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "agentic-inbox",
+	"compatibility_date": "2025-11-28",
+	"main": "./workers/app.ts",
+	"observability": {
+		"enabled": true
+	},
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"vars": {
+		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN as secrets.
+		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
+		"DOMAINS": "example.com",
+		"EMAIL_ADDRESSES": [],
+		"PUBLIC_ORIGIN": "https://inbox.example.com",
+		"VAPID_PUBLIC_KEY": "",
+		"VAPID_SUBJECT": "mailto:you@example.com",
+		"TWA_PACKAGE_ID": "com.example.inbox",
+		"TWA_SHA256_FINGERPRINTS": ""
+	},
+	"send_email": [
+		{
+			"name": "EMAIL",
+			"remote": true
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "BUCKET",
+			"bucket_name": "agentic-inbox",
+			"preview_bucket_name": "agentic-inbox"
+		}
+	],
+	"ai": {
+		"binding": "AI"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MAILBOX",
+				"class_name": "MailboxDO"
+			},
+			{
+				"name": "EMAIL_AGENT",
+				"class_name": "EmailAgent"
+			},
+			{
+				"name": "EMAIL_MCP",
+				"class_name": "EmailMCP"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"MailboxDO"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"EmailAgent"
+			]
+		},
+		{
+			"tag": "v3",
+			"new_sqlite_classes": [
+				"EmailMCP"
+			]
+		}
+	]
+}

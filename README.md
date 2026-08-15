@@ -62,7 +62,7 @@ npm run dev
 
 ### Configuration
 
-1. Set your domain in `wrangler.jsonc`
+1. Copy `example.wrangler.jsonc` to `wrangler.jsonc` and set your domain, origin, and VAPID/TWA vars. `wrangler.jsonc` is gitignored.
 2. Create an R2 bucket named `agentic-inbox`: `wrangler r2 bucket create agentic-inbox`
 
 ### Deploy
@@ -77,9 +77,9 @@ Set the VAPID private key as a Worker secret:
 npx wrangler secret put VAPID_PRIVATE_KEY
 ```
 
-Set `PUBLIC_ORIGIN`, `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT`, `TWA_PACKAGE_ID`, and `TWA_SHA256_FINGERPRINTS` as Worker vars (dashboard or `wrangler versions secret` / vars). Local values go in `.dev.vars` (gitignored). `npm run deploy` uses `--keep-vars` so those production vars are not wiped.
+Access `POLICY_AUD` and `TEAM_DOMAIN` are Worker secrets too. `npm run deploy` uses `--keep-vars` so dashboard vars you set outside the file are not wiped.
 
-This repo is public. Keep Access `POLICY_AUD` / `TEAM_DOMAIN`, VAPID keys, hostnames, package ids, and keystores out of git.
+This repo is public. Keep hostnames, VAPID keys, package ids, Access secrets, and keystores out of git.
 
 ### Android APK
 
