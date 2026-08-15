@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox } from "~/types";
+import type { Email, Folder, Label, Mailbox } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -156,6 +156,22 @@ const api = {
 		put<Folder>(`/api/v1/mailboxes/${mailboxId}/folders/${id}`, { name }),
 	deleteFolder: (mailboxId: string, id: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}/folders/${id}`),
+
+	// Labels
+	listLabels: (mailboxId: string) =>
+		get<Label[]>(`/api/v1/mailboxes/${mailboxId}/labels`),
+	createLabel: (mailboxId: string, name: string, color?: string) =>
+		post<Label>(`/api/v1/mailboxes/${mailboxId}/labels`, { name, color }),
+	updateLabel: (mailboxId: string, id: string, data: { name?: string; color?: string }) =>
+		put<Label>(`/api/v1/mailboxes/${mailboxId}/labels/${id}`, data),
+	deleteLabel: (mailboxId: string, id: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/labels/${id}`),
+	applyLabel: (mailboxId: string, emailId: string, labelId: string) =>
+		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/labels`, { labelId }),
+	removeLabel: (mailboxId: string, emailId: string, labelId: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/labels/${labelId}`),
+	listEmailsByLabel: (mailboxId: string, labelId: string, params: Record<string, string> = {}) =>
+		get<EmailListResponse>(`/api/v1/mailboxes/${mailboxId}/labels/${labelId}/emails`, { params }),
 
 	// Search
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>

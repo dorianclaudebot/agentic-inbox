@@ -389,6 +389,15 @@ export default function EmailListRoute() {
 												</span>
 											</div>
 											<div className="truncate text-sm mt-0.5">
+												{(email.labels ?? []).slice(0, 3).map((label) => (
+													<span
+														key={label.id}
+														className="inline-flex items-center gap-1 mr-1.5 align-middle text-xs text-kumo-subtle"
+													>
+														<span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: label.color }} />
+														{label.name}
+													</span>
+												))}
 												<span
 													className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}
 												>

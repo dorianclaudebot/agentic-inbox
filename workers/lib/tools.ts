@@ -354,6 +354,111 @@ export async function toolMoveEmail(
 	return { error: "Failed to move email" };
 }
 
+// ── folders ────────────────────────────────────────────────────────
+
+export async function toolListFolders(env: Env, mailboxId: string) {
+	const stub = getMailboxStub(env, mailboxId);
+	return stub.getFolders();
+}
+
+export async function toolCreateFolder(env: Env, mailboxId: string, name: string) {
+	const stub = getMailboxStub(env, mailboxId);
+	const slug = name
+		.toString()
+		.toLowerCase()
+		.replace(/\s+/g, "-")
+		.replace(/[^\w-]+/g, "")
+		.replace(/--+/g, "-")
+		.replace(/^-+/, "")
+		.replace(/-+$/, "");
+	if (!slug) return { error: "Folder name must contain alphanumeric characters" };
+	const folder = await stub.createFolder(slug, name.trim());
+	return folder ?? { error: "Folder with this name already exists" };
+}
+
+export async function toolRenameFolder(
+	env: Env,
+	mailboxId: string,
+	folderId: string,
+	name: string,
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	const folder = await stub.updateFolder(folderId, name.trim());
+	return folder ?? { error: "Folder not found" };
+}
+
+export async function toolDeleteFolder(env: Env, mailboxId: string, folderId: string) {
+	const stub = getMailboxStub(env, mailboxId);
+	const ok = await stub.deleteFolder(folderId);
+	return ok
+		? { status: "deleted", folderId }
+		: { error: "Folder not found or cannot be deleted" };
+}
+
+// ── labels ─────────────────────────────────────────────────────────
+
+export async function toolListLabels(env: Env, mailboxId: string) {
+	const stub = getMailboxStub(env, mailboxId);
+	return stub.getLabels();
+}
+
+export async function toolCreateLabel(
+	env: Env,
+	mailboxId: string,
+	name: string,
+	color?: string,
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return stub.createLabel(name, color);
+}
+
+export async function toolUpdateLabel(
+	env: Env,
+	mailboxId: string,
+	labelId: string,
+	patch: { name?: string; color?: string },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	const result = await stub.updateLabel(labelId, patch);
+	return result ?? { error: "Label not found" };
+}
+
+export async function toolDeleteLabel(env: Env, mailboxId: string, labelId: string) {
+	const stub = getMailboxStub(env, mailboxId);
+	const ok = await stub.deleteLabel(labelId);
+	return ok ? { status: "deleted", labelId } : { error: "Label not found" };
+}
+
+export async function toolApplyLabel(
+	env: Env,
+	mailboxId: string,
+	emailId: string,
+	labelId: string,
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return stub.applyLabel(emailId, labelId);
+}
+
+export async function toolRemoveLabel(
+	env: Env,
+	mailboxId: string,
+	emailId: string,
+	labelId: string,
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return stub.removeLabel(emailId, labelId);
+}
+
+export async function toolListEmailsByLabel(
+	env: Env,
+	mailboxId: string,
+	labelId: string,
+	params: { limit?: number; page?: number } = {},
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return stub.getEmailsByLabel(labelId, params);
+}
+
 // ── discard_draft ──────────────────────────────────────────────────
 
 export async function toolDiscardDraft(

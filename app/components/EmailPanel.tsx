@@ -15,6 +15,7 @@ import { splitEmailList, toEmailListValue } from "~/lib/utils";
 import api from "~/services/api";
 import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
+import { useApplyLabel, useLabels, useRemoveLabel } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 import type { Email, Folder, Mailbox } from "~/types";
@@ -41,6 +42,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
 	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
+	const { data: labels = [] } = useLabels(mailboxId);
+	const applyLabelMut = useApplyLabel();
+	const removeLabelMut = useRemoveLabel();
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
 	};
@@ -171,6 +175,13 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					}
 				}}
 				onMove={handleMove}
+				labels={labels}
+				onApplyLabel={(labelId) => {
+					if (mailboxId) applyLabelMut.mutate({ mailboxId, emailId: email.id, labelId });
+				}}
+				onRemoveLabel={(labelId) => {
+					if (mailboxId) removeLabelMut.mutate({ mailboxId, emailId: email.id, labelId });
+				}}
 				onViewSource={() => setSourceViewEmail(email)}
 				onDelete={handleDelete}
 			/>
@@ -179,6 +190,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				subject={email.subject}
 				messageCount={allMessages.length}
 				showThreadCount={hasThread}
+				labels={email.labels}
 			/>
 
 			<div className="flex-1 overflow-y-auto">

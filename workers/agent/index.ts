@@ -28,6 +28,13 @@ import {
 	toolMarkEmailRead,
 	toolMoveEmail,
 	toolDiscardDraft,
+	toolListFolders,
+	toolCreateFolder,
+	toolListLabels,
+	toolCreateLabel,
+	toolApplyLabel,
+	toolRemoveLabel,
+	toolListEmailsByLabel,
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
@@ -242,9 +249,67 @@ function createEmailTools(env: Env, mailboxId: string) {
 			},
 		}),
 
+		list_folders: defineTool({
+			description: "List folders in this mailbox, including custom folders.",
+			parameters: z.object({}),
+			execute: async (): Promise<unknown> => toolListFolders(env, mailboxId),
+		}),
+
+		create_folder: defineTool({
+			description: "Create a custom folder. Prefer this only for a name that will be reused.",
+			parameters: z.object({
+				name: z.string().describe("Display name for the new folder"),
+			}),
+			execute: async ({ name }): Promise<unknown> => toolCreateFolder(env, mailboxId, name),
+		}),
+
+		list_labels: defineTool({
+			description: "List labels in this mailbox.",
+			parameters: z.object({}),
+			execute: async (): Promise<unknown> => toolListLabels(env, mailboxId),
+		}),
+
+		create_label: defineTool({
+			description: "Create a label. Color is assigned automatically if omitted.",
+			parameters: z.object({
+				name: z.string().describe("Display name for the new label"),
+				color: z.string().optional().describe("Optional hex color, e.g. #2563eb"),
+			}),
+			execute: async ({ name, color }): Promise<unknown> => toolCreateLabel(env, mailboxId, name, color),
+		}),
+
+		apply_label: defineTool({
+			description: "Apply a label to an email. Safe if the label is already applied.",
+			parameters: z.object({
+				emailId: z.string().describe("The email ID"),
+				labelId: z.string().describe("Label id to apply"),
+			}),
+			execute: async ({ emailId, labelId }): Promise<unknown> => toolApplyLabel(env, mailboxId, emailId, labelId),
+		}),
+
+		remove_label: defineTool({
+			description: "Remove a label from an email.",
+			parameters: z.object({
+				emailId: z.string().describe("The email ID"),
+				labelId: z.string().describe("Label id to remove"),
+			}),
+			execute: async ({ emailId, labelId }): Promise<unknown> => toolRemoveLabel(env, mailboxId, emailId, labelId),
+		}),
+
+		list_emails_by_label: defineTool({
+			description: "List emails that have a given label.",
+			parameters: z.object({
+				labelId: z.string().describe("Label id to filter by"),
+				limit: z.number().default(20).describe("Maximum number of emails to return"),
+				page: z.number().default(1).describe("Page number for pagination"),
+			}),
+			execute: async ({ labelId, limit, page }): Promise<unknown> =>
+				toolListEmailsByLabel(env, mailboxId, labelId, { limit, page }),
+		}),
+
 		move_email: defineTool({
 			description:
-				"Move an email to a different folder (inbox, sent, draft, archive, trash).",
+				"Move an email to a different folder. Use list_folders for custom folder ids.",
 			parameters: z.object({
 				emailId: z.string().describe("The email ID"),
 				folderId: z

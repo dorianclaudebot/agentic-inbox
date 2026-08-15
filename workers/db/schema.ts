@@ -42,3 +42,18 @@ export const attachments = sqliteTable("attachments", {
 	content_id: text("content_id"),
 	disposition: text("disposition"),
 });
+
+export const labels = sqliteTable("labels", {
+	id: text("id").primaryKey(),
+	name: text("name").notNull().unique(),
+	color: text("color").notNull(),
+});
+
+export const emailLabels = sqliteTable("email_labels", {
+	email_id: text("email_id")
+		.notNull()
+		.references(() => emails.id, { onDelete: "cascade" }),
+	label_id: text("label_id")
+		.notNull()
+		.references(() => labels.id, { onDelete: "cascade" }),
+});

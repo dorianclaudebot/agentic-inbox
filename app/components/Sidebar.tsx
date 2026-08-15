@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
+import { useCreateLabel, useLabels } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
@@ -77,11 +78,15 @@ export default function Sidebar() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
+	const { data: labels = [] } = useLabels(mailboxId);
 	const createFolderMutation = useCreateFolder();
+	const createLabelMutation = useCreateLabel();
 	const { startCompose, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
+	const [isCreateLabelOpen, setIsCreateLabelOpen] = useState(false);
+	const [newLabelName, setNewLabelName] = useState("");
 
 	const customFolders = useMemo(
 		() =>
@@ -100,6 +105,15 @@ export default function Sidebar() {
 			createFolderMutation.mutate({ mailboxId, name: newFolderName.trim() });
 			setNewFolderName("");
 			setIsCreateFolderOpen(false);
+		}
+	};
+
+	const handleCreateLabel = (e: React.FormEvent) => {
+		e.preventDefault();
+		if (newLabelName.trim() && mailboxId) {
+			createLabelMutation.mutate({ mailboxId, name: newLabelName.trim() });
+			setNewLabelName("");
+			setIsCreateLabelOpen(false);
 		}
 	};
 
@@ -221,6 +235,36 @@ export default function Sidebar() {
 						</div>
 					</div>
 				)}
+
+				<div className="pt-5 pb-3">
+					<div className="flex items-center justify-between px-3 mb-1.5">
+						<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							Labels
+						</span>
+						<Tooltip content="New label" asChild>
+							<Button
+								variant="ghost"
+								shape="square"
+								size="sm"
+								icon={<PlusIcon size={16} />}
+								onClick={() => setIsCreateLabelOpen(true)}
+								aria-label="Create new label"
+							/>
+						</Tooltip>
+					</div>
+					{labels.map((label) => (
+						<div
+							key={label.id}
+							className="flex items-center gap-3 py-2 px-3 rounded-md text-sm text-kumo-strong"
+						>
+							<span
+								className="h-2.5 w-2.5 rounded-full shrink-0"
+								style={{ backgroundColor: label.color }}
+							/>
+							<span className="truncate">{label.name}</span>
+						</div>
+					))}
+				</div>
 			</nav>
 
 			{/* Create folder dialog */}
@@ -252,6 +296,42 @@ export default function Sidebar() {
 								type="submit"
 								variant="primary"
 								disabled={!newFolderName.trim()}
+							>
+								Create
+							</Button>
+						</div>
+					</form>
+				</Dialog>
+			</Dialog.Root>
+
+			<Dialog.Root
+				open={isCreateLabelOpen}
+				onOpenChange={setIsCreateLabelOpen}
+			>
+				<Dialog size="sm" className="p-6">
+					<Dialog.Title className="text-base font-semibold mb-4">
+						Create label
+					</Dialog.Title>
+					<form onSubmit={handleCreateLabel} className="space-y-4">
+						<Input
+							label="Label name"
+							placeholder="e.g. receipts"
+							value={newLabelName}
+							onChange={(e) => setNewLabelName(e.target.value)}
+							required
+						/>
+						<div className="flex justify-end gap-2">
+							<Dialog.Close
+								render={(props) => (
+									<Button {...props} variant="secondary">
+										Cancel
+									</Button>
+								)}
+							/>
+							<Button
+								type="submit"
+								variant="primary"
+								disabled={!newLabelName.trim()}
 							>
 								Create
 							</Button>

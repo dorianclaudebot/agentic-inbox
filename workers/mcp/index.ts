@@ -19,6 +19,17 @@ import {
 	toolSendEmail,
 	toolMarkEmailRead,
 	toolMoveEmail,
+	toolListFolders,
+	toolCreateFolder,
+	toolRenameFolder,
+	toolDeleteFolder,
+	toolListLabels,
+	toolCreateLabel,
+	toolUpdateLabel,
+	toolDeleteLabel,
+	toolApplyLabel,
+	toolRemoveLabel,
+	toolListEmailsByLabel,
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
@@ -59,12 +70,13 @@ function mcpResult(result: Record<string, unknown>) {
  *
  * Clients (ProtoAgent, Claude Code, Cursor, etc.) connect to the
  * `/mcp` endpoint and can list mailboxes, read/search emails,
- * draft replies, send messages, and manage folders.
+ * draft replies, send messages, and manage folders and labels.
+ * Prefers the 2026-07-28 stateless MCP handshake; sessionful clients still work.
  */
 export class EmailMCP extends McpAgent<Env> {
 	server = new McpServer({
 		name: "agentic-inbox",
-		version: "1.0.0",
+		version: "1.1.0",
 	});
 
 	async init() {
@@ -402,8 +414,168 @@ export class EmailMCP extends McpAgent<Env> {
 
 		// ── move_email ─────────────────────────────────────────────
 		this.server.tool(
+			"list_folders",
+			"List folders in a mailbox, including system folders and custom folders.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+			},
+			async ({ mailboxId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpText(await toolListFolders(env, mailboxId));
+			},
+		);
+
+		this.server.tool(
+			"create_folder",
+			"Create a custom folder in a mailbox.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				name: z.string().describe("Display name for the new folder"),
+			},
+			async ({ mailboxId, name }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolCreateFolder(env, mailboxId, name) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"rename_folder",
+			"Rename a custom folder. System folders cannot be renamed.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				folderId: z.string().describe("Folder id to rename"),
+				name: z.string().describe("New display name"),
+			},
+			async ({ mailboxId, folderId, name }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolRenameFolder(env, mailboxId, folderId, name) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"delete_folder",
+			"Delete a custom folder. System folders cannot be deleted.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				folderId: z.string().describe("Folder id to delete"),
+			},
+			async ({ mailboxId, folderId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolDeleteFolder(env, mailboxId, folderId) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"list_labels",
+			"List labels in a mailbox.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+			},
+			async ({ mailboxId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpText(await toolListLabels(env, mailboxId));
+			},
+		);
+
+		this.server.tool(
+			"create_label",
+			"Create a label in a mailbox. Color is assigned automatically if omitted.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				name: z.string().describe("Display name for the new label"),
+				color: z.string().optional().describe("Optional hex color, e.g. #2563eb"),
+			},
+			async ({ mailboxId, name, color }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolCreateLabel(env, mailboxId, name, color) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"update_label",
+			"Rename a label or change its color.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				labelId: z.string().describe("Label id to update"),
+				name: z.string().optional().describe("Updated display name"),
+				color: z.string().optional().describe("Updated hex color"),
+			},
+			async ({ mailboxId, labelId, name, color }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolUpdateLabel(env, mailboxId, labelId, { name, color }) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"delete_label",
+			"Delete a label from a mailbox. Emails keep their folders.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				labelId: z.string().describe("Label id to delete"),
+			},
+			async ({ mailboxId, labelId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolDeleteLabel(env, mailboxId, labelId) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"apply_label",
+			"Apply a label to an email. Safe to call if the label is already applied.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				emailId: z.string().describe("The email ID"),
+				labelId: z.string().describe("Label id to apply"),
+			},
+			async ({ mailboxId, emailId, labelId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolApplyLabel(env, mailboxId, emailId, labelId) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"remove_label",
+			"Remove a label from an email.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				emailId: z.string().describe("The email ID"),
+				labelId: z.string().describe("Label id to remove"),
+			},
+			async ({ mailboxId, emailId, labelId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolRemoveLabel(env, mailboxId, emailId, labelId) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
+			"list_emails_by_label",
+			"List emails that have a given label.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				labelId: z.string().describe("Label id to filter by"),
+				limit: z.number().default(20).describe("Maximum number of emails to return"),
+				page: z.number().default(1).describe("Page number for pagination"),
+			},
+			async ({ mailboxId, labelId, limit, page }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolListEmailsByLabel(env, mailboxId, labelId, { limit, page }) as Record<string, unknown>);
+			},
+		);
+
+		this.server.tool(
 			"move_email",
-			"Move an email to a different folder (inbox, sent, draft, archive, trash).",
+			"Move an email to a different folder. Use list_folders to see valid folder ids.",
 			{
 				mailboxId: z.string().describe("The mailbox email address"),
 				emailId: z.string().describe("The email ID"),

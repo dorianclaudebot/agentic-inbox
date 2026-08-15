@@ -4,7 +4,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
-import { eq, and, or, asc, desc, sql } from "drizzle-orm";
+import { eq, and, or, ne, asc, desc, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
@@ -99,6 +99,34 @@ interface AttachmentData {
 	disposition?: string | null;
 }
 
+const DEFAULT_LABEL_COLORS = [
+	"#2563eb",
+	"#16a34a",
+	"#dc2626",
+	"#d97706",
+	"#7c3aed",
+	"#0891b2",
+	"#db2777",
+];
+
+function slugifyLabel(name: string): string {
+	return name
+		.toString()
+		.toLowerCase()
+		.replace(/\s+/g, "-")
+		.replace(/[^\w-]+/g, "")
+		.replace(/--+/g, "-")
+		.replace(/^-+/, "")
+		.replace(/-+$/, "");
+}
+
+function normalizeHexColor(color: string | undefined, fallbackIndex = 0): string {
+	if (color && /^#([0-9a-fA-F]{6})$/.test(color)) {
+		return color.toLowerCase();
+	}
+	return DEFAULT_LABEL_COLORS[fallbackIndex % DEFAULT_LABEL_COLORS.length];
+}
+
 export class MailboxDO extends DurableObject<Env> {
 	declare __DURABLE_OBJECT_BRAND: never;
 	db: ReturnType<typeof drizzle>;
@@ -169,11 +197,11 @@ export class MailboxDO extends DurableObject<Env> {
 			.offset(offset)
 			.all();
 
-		return result.map((email) => ({
+		return this.#attachLabelsToEmails(result.map((email) => ({
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
-		}));
+		})));
 	}
 
 	/**
@@ -278,14 +306,14 @@ export class MailboxDO extends DurableObject<Env> {
 			);
 
 			const rows = [...result];
-			return rows.map((row: any) => ({
+			return this.#attachLabelsToEmails(rows.map((row: any) => ({
 				...row,
 				read: !!row.read,
 				starred: !!row.starred,
 				thread_count: row.thread_count || 1,
 				thread_unread_count: row.thread_unread_count || 0,
 				participants: row.participants || row.sender,
-			}));
+			})));
 		}
 
 		// Non-draft folders: full threading logic
@@ -373,7 +401,7 @@ export class MailboxDO extends DurableObject<Env> {
 		);
 
 		const rows = [...result];
-		return rows.map((row: any) => ({
+		return this.#attachLabelsToEmails(rows.map((row: any) => ({
 			...row,
 			read: !!row.read,
 			starred: !!row.starred,
@@ -382,7 +410,7 @@ export class MailboxDO extends DurableObject<Env> {
 			participants: row.participants || row.sender,
 			needs_reply: !!row.needs_reply,
 			has_draft: !!row.has_draft,
-		}));
+		})));
 	}
 
 	/**
@@ -456,6 +484,7 @@ export class MailboxDO extends DurableObject<Env> {
 			read: !!email.read,
 			starred: !!email.starred,
 			attachments: emailAttachments,
+			labels: this.#labelsForEmail(id),
 		};
 	}
 
@@ -493,12 +522,12 @@ export class MailboxDO extends DurableObject<Env> {
 			attachmentsByEmail.set(att.email_id, list);
 		}
 
-		return emailRows.map((email) => ({
+		return this.#attachLabelsToEmails(emailRows.map((email) => ({
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
 			attachments: attachmentsByEmail.get(email.id) || [],
-		}));
+		})));
 	}
 
 	async updateEmail(
@@ -603,6 +632,14 @@ export class MailboxDO extends DurableObject<Env> {
 	}
 
 	async updateFolder(id: string, name: string) {
+		const folder = this.db
+			.select({ is_deletable: schema.folders.is_deletable })
+			.from(schema.folders)
+			.where(eq(schema.folders.id, id))
+			.get();
+		if (!folder || folder.is_deletable === 0) {
+			return null;
+		}
 		const result = this.db
 			.update(schema.folders)
 			.set({ name })
@@ -635,18 +672,224 @@ export class MailboxDO extends DurableObject<Env> {
 		const folder = this.db
 			.select({ id: schema.folders.id })
 			.from(schema.folders)
-			.where(eq(schema.folders.id, folderId))
+			.where(or(eq(schema.folders.id, folderId), eq(schema.folders.name, folderId)))
 			.get();
 
 		if (!folder) return false;
 
 		this.db
 			.update(schema.emails)
-			.set({ folder_id: folderId })
+			.set({ folder_id: folder.id })
 			.where(eq(schema.emails.id, id))
 			.run();
 
 		return true;
+	}
+
+	// ── Labels ─────────────────────────────────────────────────────
+
+	#labelsForEmail(emailId: string) {
+		return this.db
+			.select({
+				id: schema.labels.id,
+				name: schema.labels.name,
+				color: schema.labels.color,
+			})
+			.from(schema.emailLabels)
+			.innerJoin(schema.labels, eq(schema.emailLabels.label_id, schema.labels.id))
+			.where(eq(schema.emailLabels.email_id, emailId))
+			.all();
+	}
+
+	#attachLabelsToEmails<T extends { id: string }>(emails: T[]) {
+		if (emails.length === 0) return emails.map((email) => ({ ...email, labels: [] as { id: string; name: string; color: string }[] }));
+
+		const ids = emails.map((email) => email.id);
+		const placeholders = ids.map((_, i) => `?${i + 1}`).join(",");
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT el.email_id as email_id, l.id as id, l.name as name, l.color as color
+				 FROM email_labels el
+				 INNER JOIN labels l ON l.id = el.label_id
+				 WHERE el.email_id IN (${placeholders})`,
+				...ids,
+			),
+		] as { email_id: string; id: string; name: string; color: string }[];
+
+		const byEmail = new Map<string, { id: string; name: string; color: string }[]>();
+		for (const row of rows) {
+			const list = byEmail.get(row.email_id) || [];
+			list.push({ id: row.id, name: row.name, color: row.color });
+			byEmail.set(row.email_id, list);
+		}
+
+		return emails.map((email) => ({
+			...email,
+			labels: byEmail.get(email.id) || [],
+		}));
+	}
+
+	async getLabels() {
+		return this.db
+			.select({
+				id: schema.labels.id,
+				name: schema.labels.name,
+				color: schema.labels.color,
+			})
+			.from(schema.labels)
+			.all();
+	}
+
+	async createLabel(name: string, color?: string) {
+		const trimmed = name.trim();
+		if (!trimmed) return { error: "Label name is required" as const };
+		const base = slugifyLabel(trimmed) || crypto.randomUUID().slice(0, 8);
+		let id = base;
+		let n = 2;
+		while (this.db.select({ id: schema.labels.id }).from(schema.labels).where(eq(schema.labels.id, id)).get()) {
+			id = `${base}-${n++}`;
+		}
+		const existing = this.db
+			.select({ id: schema.labels.id })
+			.from(schema.labels)
+			.where(eq(schema.labels.name, trimmed))
+			.get();
+		if (existing) return { error: "Label with this name already exists" as const };
+
+		const count = this.db.select({ id: schema.labels.id }).from(schema.labels).all().length;
+		const row = this.db
+			.insert(schema.labels)
+			.values({
+				id,
+				name: trimmed,
+				color: normalizeHexColor(color, count),
+			})
+			.returning({
+				id: schema.labels.id,
+				name: schema.labels.name,
+				color: schema.labels.color,
+			})
+			.get();
+		return row;
+	}
+
+	async updateLabel(id: string, patch: { name?: string; color?: string }) {
+		const current = this.db
+			.select()
+			.from(schema.labels)
+			.where(eq(schema.labels.id, id))
+			.get();
+		if (!current) return null;
+
+		const nextName = patch.name?.trim();
+		if (nextName) {
+			const clash = this.db
+				.select({ id: schema.labels.id })
+				.from(schema.labels)
+				.where(and(eq(schema.labels.name, nextName), ne(schema.labels.id, id)))
+				.get();
+			if (clash) return { error: "Label with this name already exists" as const };
+		}
+
+		const row = this.db
+			.update(schema.labels)
+			.set({
+				name: nextName || current.name,
+				color: patch.color ? normalizeHexColor(patch.color) : current.color,
+			})
+			.where(eq(schema.labels.id, id))
+			.returning({
+				id: schema.labels.id,
+				name: schema.labels.name,
+				color: schema.labels.color,
+			})
+			.get();
+		return row ?? null;
+	}
+
+	async deleteLabel(id: string) {
+		const existing = this.db
+			.select({ id: schema.labels.id })
+			.from(schema.labels)
+			.where(eq(schema.labels.id, id))
+			.get();
+		if (!existing) return false;
+		this.db.delete(schema.labels).where(eq(schema.labels.id, id)).run();
+		return true;
+	}
+
+	async applyLabel(emailId: string, labelId: string) {
+		const email = this.db.select({ id: schema.emails.id }).from(schema.emails).where(eq(schema.emails.id, emailId)).get();
+		if (!email) return { error: "Email not found" as const };
+		const label = this.db.select({ id: schema.labels.id }).from(schema.labels).where(eq(schema.labels.id, labelId)).get();
+		if (!label) return { error: "Label not found" as const };
+
+		const already = this.db
+			.select({ email_id: schema.emailLabels.email_id })
+			.from(schema.emailLabels)
+			.where(and(eq(schema.emailLabels.email_id, emailId), eq(schema.emailLabels.label_id, labelId)))
+			.get();
+		if (!already) {
+			this.db.insert(schema.emailLabels).values({ email_id: emailId, label_id: labelId }).run();
+		}
+		return { status: "applied" as const, emailId, labelId };
+	}
+
+	async removeLabel(emailId: string, labelId: string) {
+		this.db
+			.delete(schema.emailLabels)
+			.where(and(eq(schema.emailLabels.email_id, emailId), eq(schema.emailLabels.label_id, labelId)))
+			.run();
+		return { status: "removed" as const, emailId, labelId };
+	}
+
+	async getEmailsByLabel(labelId: string, options: { page?: number; limit?: number } = {}) {
+		const label = this.db.select().from(schema.labels).where(eq(schema.labels.id, labelId)).get();
+		if (!label) return { error: "Label not found" as const };
+
+		const page = Math.max(options.page ?? 1, 1);
+		const limit = Math.min(Math.max(options.limit ?? 25, 1), 100);
+		const offset = (page - 1) * limit;
+
+		const emails = this.db
+			.select({
+				id: schema.emails.id,
+				subject: schema.emails.subject,
+				sender: schema.emails.sender,
+				recipient: schema.emails.recipient,
+				cc: schema.emails.cc,
+				bcc: schema.emails.bcc,
+				date: schema.emails.date,
+				read: schema.emails.read,
+				starred: schema.emails.starred,
+				in_reply_to: schema.emails.in_reply_to,
+				email_references: schema.emails.email_references,
+				thread_id: schema.emails.thread_id,
+				folder_id: schema.emails.folder_id,
+				snippet: sql<string>`SUBSTR(${schema.emails.body}, 1, 300)`,
+			})
+			.from(schema.emailLabels)
+			.innerJoin(schema.emails, eq(schema.emailLabels.email_id, schema.emails.id))
+			.where(eq(schema.emailLabels.label_id, labelId))
+			.orderBy(desc(schema.emails.date))
+			.limit(limit)
+			.offset(offset)
+			.all();
+
+		const countRow = this.db
+			.select({ total: sql<number>`COUNT(*)`.mapWith(Number) })
+			.from(schema.emailLabels)
+			.where(eq(schema.emailLabels.label_id, labelId))
+			.get();
+
+		return {
+			emails: this.#attachLabelsToEmails(emails.map((email) => ({
+				...email,
+				read: !!email.read,
+				starred: !!email.starred,
+			}))),
+			totalCount: countRow?.total ?? 0,
+		};
 	}
 
 	// ── Search (raw SQL — dynamic condition builder) ───────────────
@@ -715,11 +958,11 @@ export class MailboxDO extends DurableObject<Env> {
 		params.push(limit, offset);
 
 		const result = this.ctx.storage.sql.exec(query, ...params);
-		return [...result].map((row: any) => ({
+		return this.#attachLabelsToEmails([...result].map((row: any) => ({
 			...row,
 			read: !!row.read,
 			starred: !!row.starred,
-		}));
+		})));
 	}
 
 	/**

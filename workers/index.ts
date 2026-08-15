@@ -28,7 +28,7 @@ type AppContext = Context<MailboxContext>;
 const CreateMailboxBody = z.object({
 	email: z.string().email(),
 	name: z.string().min(1),
-	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
+	settings: z.record(z.string(), z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });
 
 const DraftBody = z.object({
@@ -292,6 +292,55 @@ app.put("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => {
 app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => {
 	const ok = await c.var.mailboxStub.deleteFolder(c.req.param("id")!);
 	return ok ? c.body(null, 204) : c.json({ error: "Folder not found or cannot be deleted" }, 400);
+});
+
+// -- Labels ---------------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/labels", async (c: AppContext) => {
+	return c.json(await c.var.mailboxStub.getLabels());
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/labels", async (c: AppContext) => {
+	const { name, color } = (await c.req.json()) as { name?: string; color?: string };
+	if (!name?.trim()) return c.json({ error: "Label name is required" }, 400);
+	const result = await c.var.mailboxStub.createLabel(name, color);
+	if (result && "error" in result) return c.json(result, 409);
+	return c.json(result, 201);
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/labels/:id", async (c: AppContext) => {
+	const { name, color } = (await c.req.json()) as { name?: string; color?: string };
+	const result = await c.var.mailboxStub.updateLabel(c.req.param("id")!, { name, color });
+	if (!result) return c.json({ error: "Label not found" }, 404);
+	if ("error" in result) return c.json(result, 409);
+	return c.json(result);
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/labels/:id", async (c: AppContext) => {
+	const ok = await c.var.mailboxStub.deleteLabel(c.req.param("id")!);
+	return ok ? c.body(null, 204) : c.json({ error: "Label not found" }, 404);
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/labels/:id/emails", async (c: AppContext) => {
+	const result = await c.var.mailboxStub.getEmailsByLabel(c.req.param("id")!, {
+		page: intQuery(c, "page"),
+		limit: intQuery(c, "limit"),
+	});
+	if (result && "error" in result) return c.json(result, 404);
+	return c.json(result);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/labels", async (c: AppContext) => {
+	const { labelId } = (await c.req.json()) as { labelId?: string };
+	if (!labelId) return c.json({ error: "labelId is required" }, 400);
+	const result = await c.var.mailboxStub.applyLabel(c.req.param("id")!, labelId);
+	if (result && "error" in result) return c.json(result, 404);
+	return c.json(result);
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/emails/:id/labels/:labelId", async (c: AppContext) => {
+	const result = await c.var.mailboxStub.removeLabel(c.req.param("id")!, c.req.param("labelId")!);
+	return c.json(result);
 });
 
 // -- Search ---------------------------------------------------------

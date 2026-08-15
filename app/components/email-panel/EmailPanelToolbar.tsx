@@ -19,7 +19,7 @@ import {
 	TrashIcon,
 	XIcon,
 } from "@phosphor-icons/react";
-import type { Folder, Email } from "~/types";
+import type { Folder, Email, Label } from "~/types";
 
 interface EmailPanelToolbarProps {
 	email: Email;
@@ -27,6 +27,7 @@ interface EmailPanelToolbarProps {
 	isDraftFolder: boolean;
 	isSending: boolean;
 	moveToFolders: Folder[];
+	labels: Label[];
 	lastReceivedMessage?: Email;
 	onBack: () => void;
 	onSendDraft: () => void;
@@ -37,6 +38,8 @@ interface EmailPanelToolbarProps {
 	onToggleStar: () => void;
 	onToggleRead: () => void;
 	onMove: (folderId: string) => void;
+	onApplyLabel: (labelId: string) => void;
+	onRemoveLabel: (labelId: string) => void;
 	onViewSource: () => void;
 	onDelete: () => void;
 }
@@ -47,6 +50,7 @@ export default function EmailPanelToolbar({
 	isDraftFolder,
 	isSending,
 	moveToFolders,
+	labels,
 	onBack,
 	onSendDraft,
 	onEditDraft,
@@ -56,6 +60,8 @@ export default function EmailPanelToolbar({
 	onToggleStar,
 	onToggleRead,
 	onMove,
+	onApplyLabel,
+	onRemoveLabel,
 	onViewSource,
 	onDelete,
 }: EmailPanelToolbarProps) {
@@ -157,6 +163,12 @@ export default function EmailPanelToolbar({
 			</Tooltip>
 
 			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
+			<LabelMenu
+				labels={labels}
+				applied={email.labels ?? []}
+				onApply={onApplyLabel}
+				onRemove={onRemoveLabel}
+			/>
 
 			<div className="ml-auto flex items-center gap-0.5">
 				<Tooltip content="View source" side="bottom" asChild>
@@ -191,6 +203,73 @@ export default function EmailPanelToolbar({
 					/>
 				</Tooltip>
 			</div>
+		</div>
+	);
+}
+
+function LabelMenu({
+	labels,
+	applied,
+	onApply,
+	onRemove,
+}: {
+	labels: Label[];
+	applied: Label[];
+	onApply: (id: string) => void;
+	onRemove: (id: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const ref = useRef<HTMLDivElement>(null);
+	const appliedIds = new Set(applied.map((label) => label.id));
+
+	useEffect(() => {
+		if (!open) return;
+		const handler = (e: MouseEvent) => {
+			if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+		};
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, [open]);
+
+	return (
+		<div ref={ref} className="relative">
+			<Tooltip content="Labels" side="bottom" asChild>
+				<Button
+					variant="ghost"
+					shape="square"
+					size="sm"
+					icon={<EnvelopeSimpleIcon size={18} />}
+					onClick={() => setOpen((o) => !o)}
+					aria-label="Labels"
+				/>
+			</Tooltip>
+			{open && (
+				<div className="absolute top-full left-0 z-50 mt-1 min-w-[180px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
+					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Labels</div>
+					<div className="h-px bg-kumo-line my-1" />
+					{labels.length === 0 && (
+						<div className="px-3 py-1.5 text-sm text-kumo-subtle">No labels yet</div>
+					)}
+					{labels.map((label) => {
+						const isOn = appliedIds.has(label.id);
+						return (
+							<button
+								key={label.id}
+								type="button"
+								className="w-full text-left px-3 py-1.5 text-sm text-kumo-default hover:bg-kumo-overlay transition-colors flex items-center gap-2"
+								onClick={() => {
+									if (isOn) onRemove(label.id);
+									else onApply(label.id);
+								}}
+							>
+								<span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+								<span className="truncate flex-1">{label.name}</span>
+								{isOn && <span className="text-xs text-kumo-subtle">on</span>}
+							</button>
+						);
+					})}
+				</div>
+			)}
 		</div>
 	);
 }
